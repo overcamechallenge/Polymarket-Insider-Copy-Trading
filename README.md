@@ -46,8 +46,18 @@ npm run whale-positions:watch
 - `whale-copy-trading-data/` — position snapshots and paper portfolio state
 - `logs/` — runtime logs from the position watcher
 
+## SOCKS proxy (live trading)
+
+For live trading, set `SOCKS_PROXY_URL` in `.env` — same as the main copy-trading bot. All outbound traffic (CLOB orders, position fetches, watchlist resolution, follow-wallet scans) routes through the proxy.
+
+```bash
+SOCKS_PROXY_URL='socks5h://username:password@host:port'
+```
+
+Use `socks5h://` (not `socks5://`) so DNS lookups are proxied too.
+
 ## Requirements
 
 - Node.js 20.10+
 - No database required
-- Live trading requires `PROXY_WALLET`, `PRIVATE_KEY`, and Polygon RPC access
+- Live trading requires `PROXY_WALLET`, `PRIVATE_KEY`, Polygon RPC access, and usually `SOCKS_PROXY_URL`

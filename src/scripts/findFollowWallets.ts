@@ -12,8 +12,13 @@
  * Run:  npm run find-follow-wallets
  */
 import axios from 'axios';
+import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
+import { configureSocksProxyFromEnv } from '../utils/proxy';
+
+dotenv.config();
+const { httpAgent, httpsAgent } = configureSocksProxyFromEnv(process.env.SOCKS_PROXY_URL);
 
 const colors = {
     reset: '\x1b[0m',
@@ -64,6 +69,17 @@ const CONFIG = {
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const apiGet = async (url: string, timeout: number) => {
+    const res = await axios.get(url, {
+        timeout,
+        headers: { 'User-Agent': UA },
+        proxy: false,
+        httpAgent,
+        httpsAgent,
+    });
+    return res;
+};
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -157,9 +173,9 @@ const fetchProfile = async (address: string): Promise<ProfileInfo> => {
 
     const joinCutoff = nowSec() - CONFIG.JOIN_DAYS * 86400;
     try {
-        const res = await axios.get(
+        const res = await apiGet(
             `https://gamma-api.polymarket.com/public-profile?address=${key}`,
-            { timeout: 12000, headers: { 'User-Agent': UA } }
+            12000
         );
         const createdAt = res.data?.createdAt ? String(res.data.createdAt) : null;
         const createdSec = createdAt ? parseTs(createdAt) : 0;
@@ -199,9 +215,9 @@ const fetchEligibleMarkets = async (): Promise<EligibleMarket[]> => {
     while (out.length < CONFIG.SWEEP_MARKETS && offset < 1200) {
         let batch: any[] = [];
         try {
-            const res = await axios.get(
+            const res = await apiGet(
                 `https://gamma-api.polymarket.com/markets?closed=false&order=volumeNum&ascending=false&limit=100&offset=${offset}`,
-                { timeout: 20000, headers: { 'User-Agent': UA } }
+                20000
             );
             batch = Array.isArray(res.data) ? res.data : [];
         } catch {
@@ -246,9 +262,9 @@ const fetchMarketTrades = async (conditionId: string): Promise<any[]> => {
     while (all.length < CONFIG.MAX_TRADES_PER_MARKET) {
         let batch: any[] = [];
         try {
-            const res = await axios.get(
+            const res = await apiGet(
                 `https://data-api.polymarket.com/trades?market=${conditionId}&limit=500&offset=${offset}&takerOnly=false`,
-                { timeout: 15000, headers: { 'User-Agent': UA } }
+                15000
             );
             batch = Array.isArray(res.data) ? res.data : [];
         } catch {
@@ -319,9 +335,9 @@ const scanMarkets = async (markets: EligibleMarket[]): Promise<Map<string, Walle
 const fetchActivePositions = async (address: string) => {
     const endCutoff = nowSec() + CONFIG.MARKET_END_DAYS * 86400;
     try {
-        const res = await axios.get(
+        const res = await apiGet(
             `https://data-api.polymarket.com/positions?user=${address}&sizeThreshold=1&limit=500`,
-            { timeout: 15000, headers: { 'User-Agent': UA } }
+            15000
         );
         return (Array.isArray(res.data) ? res.data : []).filter((p: any) => {
             const title = String(p.title || p.slug || '');

@@ -27,6 +27,9 @@ export const main = async (): Promise<void> => {
     }
 
     Logger.success(`[Whale Positions] Watching: ${formatResolvedWatchlist(targets)}`);
+    if (ENV.SOCKS_PROXY_URL) {
+        Logger.info('[Whale Positions] SOCKS proxy enabled — CLOB, data-api, and watchlist traffic routed through proxy');
+    }
     if (WHALE_POSITION_PAPER_TRADING) {
         Logger.info('[Whale Positions] Mode: PAPER — virtual portfolio, simulated fills');
     } else if (WHALE_POSITION_DRY_RUN) {
