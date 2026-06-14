@@ -1,0 +1,8 @@
+node_modules/
+dist/
+logs/
+*.log
+.env
+.DS_Store
+insider_scan_results/
+whale-copy-trading-data/

@@ -1,0 +1,27 @@
+{
+    "name": "polymarket-whale-tools",
+    "version": "1.0.0",
+    "description": "Find follow wallets and watch whale positions on Polymarket",
+    "type": "commonjs",
+    "engines": {
+        "node": ">=20.10"
+    },
+    "scripts": {
+        "find-follow-wallets": "ts-node src/scripts/findFollowWallets.ts",
+        "whale-positions:watch": "ts-node src/whale-copy-trading/positionSyncBot.ts",
+        "build": "tsc"
+    },
+    "dependencies": {
+        "@polymarket/clob-client-v2": "^1.0.6",
+        "axios": "^1.7.9",
+        "chalk": "^5.4.1",
+        "dotenv": "^16.4.7",
+        "ethers": "^5.8.0",
+        "socks-proxy-agent": "^10.0.0"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.10",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.7.3"
+    }
+}
