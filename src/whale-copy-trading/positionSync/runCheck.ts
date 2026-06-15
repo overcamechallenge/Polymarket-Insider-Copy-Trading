@@ -111,7 +111,9 @@ export const runPositionSyncCheck = async (
             );
             logPaperPortfolioSummary(portfolio, markPrices);
         }
-        Logger.info('[Whale Positions] Check complete — no position changes detected.');
+        Logger.success(
+            `[Whale Positions] Check complete — no position changes detected (${summary.targets} wallet(s) checked).`
+        );
         return summary;
     }
 

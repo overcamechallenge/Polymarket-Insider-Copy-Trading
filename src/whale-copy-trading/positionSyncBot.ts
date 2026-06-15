@@ -5,7 +5,15 @@ import {
     formatResolvedWatchlist,
     resolvePolymarketWatchlist,
 } from '../utils/resolvePolymarketWatchlist';
-import { WHALE_RUNTIME, WHALE_WATCH_LIST, WHALE_POSITION_CHECK_INTERVAL_HOURS, WHALE_POSITION_PAPER_TRADING, WHALE_POSITION_DRY_RUN } from './config';
+import {
+    WHALE_RUNTIME,
+    WHALE_WATCH_LIST,
+    WHALE_POSITION_PAPER_TRADING,
+    WHALE_POSITION_DRY_RUN,
+    getWhalePositionCheckIntervalMs,
+    formatWhalePositionCheckInterval,
+    formatWhaleChecksPerDay,
+} from './config';
 import { runPositionSyncCheck } from './positionSync/runCheck';
 
 configureSocksProxyFromEnv(ENV.SOCKS_PROXY_URL);
@@ -38,12 +46,19 @@ export const main = async (): Promise<void> => {
         Logger.info('[Whale Positions] Mode: LIVE — real orders');
     }
     Logger.info(
-        `[Whale Positions] Scheduled checks every ${WHALE_POSITION_CHECK_INTERVAL_HOURS} hour(s) (~${Math.round(24 / WHALE_POSITION_CHECK_INTERVAL_HOURS)}x/day)`
+        `[Whale Positions] Scheduled checks every ${formatWhalePositionCheckInterval()} (${formatWhaleChecksPerDay()}x/day)`
     );
     Logger.info('[Whale Positions] First run per wallet saves baseline only. Copies start on the next check when positions differ.');
     Logger.separator();
 
-    const intervalMs = WHALE_POSITION_CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
+    const intervalMs = getWhalePositionCheckIntervalMs();
+
+    const logNextCheck = () => {
+        const nextAt = new Date(Date.now() + intervalMs);
+        Logger.info(
+            `[Whale Positions] Next check in ${formatWhalePositionCheckInterval()} — ${nextAt.toLocaleString()}`
+        );
+    };
 
     const runOnce = async () => {
         Logger.header('[Whale Positions] Scheduled check');
@@ -55,6 +70,7 @@ export const main = async (): Promise<void> => {
             );
         }
         Logger.separator();
+        logNextCheck();
     };
 
     await runOnce();

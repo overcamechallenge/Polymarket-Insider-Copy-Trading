@@ -7,7 +7,29 @@ const num = (key: string, def: number, min = 0): number => {
     return v;
 };
 
-export const WHALE_POSITION_CHECK_INTERVAL_HOURS = num('WHALE_POSITION_CHECK_INTERVAL_HOURS', 4, 1);
+// Fractional hours allowed (e.g. 0.1 = 6 minutes). Minimum 1 minute.
+export const WHALE_POSITION_CHECK_INTERVAL_HOURS = num('WHALE_POSITION_CHECK_INTERVAL_HOURS', 4, 1 / 60);
+
+export const getWhalePositionCheckIntervalMs = (): number =>
+    WHALE_POSITION_CHECK_INTERVAL_HOURS * 60 * 60 * 1000;
+
+export const formatWhalePositionCheckInterval = (): string => {
+    const hours = WHALE_POSITION_CHECK_INTERVAL_HOURS;
+    if (hours < 1 / 60) {
+        const seconds = Math.round(hours * 3600);
+        return `${seconds} second(s)`;
+    }
+    if (hours < 1) {
+        const minutes = Math.round(hours * 60 * 10) / 10;
+        return `${minutes} min`;
+    }
+    return `${hours} hour(s)`;
+};
+
+export const formatWhaleChecksPerDay = (): string => {
+    const perDay = 24 / WHALE_POSITION_CHECK_INTERVAL_HOURS;
+    return perDay >= 10 ? `~${Math.round(perDay)}` : `~${perDay.toFixed(1)}`;
+};
 
 export const WHALE_POSITION_DRY_RUN =
     (process.env.WHALE_POSITION_DRY_RUN || 'true').toLowerCase() === 'true';
