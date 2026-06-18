@@ -72,9 +72,13 @@ const parseCopyStrategy = (): CopyStrategyConfig => {
         copySize: parseFloat(process.env.COPY_SIZE || '10.0'),
         maxOrderSizeUSD: parseFloat(process.env.MAX_ORDER_SIZE_USD || '100.0'),
         minOrderSizeUSD: parseFloat(process.env.MIN_ORDER_SIZE_USD || '1.0'),
-        maxPositionSizeUSD: process.env.MAX_POSITION_SIZE_USD
-            ? parseFloat(process.env.MAX_POSITION_SIZE_USD)
-            : undefined,
+        maxPositionSizeUSD: (() => {
+            const raw = process.env.MAX_POSITION_SIZE_USD;
+            if (raw === undefined || raw.trim() === '') return undefined;
+            const v = parseFloat(raw);
+            if (!Number.isFinite(v) || v <= 0) return undefined;
+            return v;
+        })(),
         maxDailyVolumeUSD: process.env.MAX_DAILY_VOLUME_USD
             ? parseFloat(process.env.MAX_DAILY_VOLUME_USD)
             : undefined,

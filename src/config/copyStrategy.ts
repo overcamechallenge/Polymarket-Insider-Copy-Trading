@@ -51,7 +51,7 @@ export interface CopyStrategyConfig {
     // Safety limits
     maxOrderSizeUSD: number; // Maximum size for a single order
     minOrderSizeUSD: number; // Minimum size for a single order
-    maxPositionSizeUSD?: number; // Maximum total size for a position (optional)
+    maxPositionSizeUSD?: number; // Maximum USD exposure per market/outcome (optional; 0 = no limit)
     maxDailyVolumeUSD?: number; // Maximum total volume per day (optional)
 }
 
@@ -126,17 +126,17 @@ export function calculateOrderSize(
         reasoning += ` → Capped at max $${config.maxOrderSizeUSD}`;
     }
 
-    // Step 3: Apply maximum position size limit (if configured)
+    // Step 3: Apply per-market position size limit (if configured)
     if (config.maxPositionSizeUSD) {
         const newTotalPosition = currentPositionSize + finalAmount;
         if (newTotalPosition > config.maxPositionSizeUSD) {
             const allowedAmount = Math.max(0, config.maxPositionSizeUSD - currentPositionSize);
             if (allowedAmount < config.minOrderSizeUSD) {
                 finalAmount = 0;
-                reasoning += ` → Position limit reached`;
+                reasoning += ` → Per-market position limit ($${config.maxPositionSizeUSD}) reached`;
             } else {
                 finalAmount = allowedAmount;
-                reasoning += ` → Reduced to fit position limit`;
+                reasoning += ` → Reduced to fit per-market limit ($${config.maxPositionSizeUSD})`;
             }
         }
     }

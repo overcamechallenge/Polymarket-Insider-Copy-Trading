@@ -10,6 +10,7 @@ import {
     WHALE_WATCH_LIST,
     WHALE_POSITION_PAPER_TRADING,
     WHALE_POSITION_DRY_RUN,
+    WHALE_COPY_CONFIG,
     getWhalePositionCheckIntervalMs,
     formatWhalePositionCheckInterval,
     formatWhaleChecksPerDay,
@@ -48,6 +49,11 @@ export const main = async (): Promise<void> => {
     Logger.info(
         `[Whale Positions] Scheduled checks every ${formatWhalePositionCheckInterval()} (${formatWhaleChecksPerDay()}x/day)`
     );
+    if (WHALE_COPY_CONFIG.maxPositionSizeUSD) {
+        Logger.info(
+            `[Whale Positions] Per-market position cap: $${WHALE_COPY_CONFIG.maxPositionSizeUSD.toFixed(2)}`
+        );
+    }
     Logger.info('[Whale Positions] First run per wallet saves baseline only. Copies start on the next check when positions differ.');
     Logger.separator();
 

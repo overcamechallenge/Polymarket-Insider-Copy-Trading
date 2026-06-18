@@ -5,7 +5,7 @@
  * Criteria (env-tunable):
  *   - BUY trade notional >= $1,000
  *   - Entry price <= $0.50
- *   - Account joined within last 14 days
+ *   - Account joined within last N days (optional — FOLLOW_JOIN_DAYS=0 disables)
  *   - Market end date within next 30 days
  *   - Market is NOT politics, sports, or geopolitics
  *
@@ -45,6 +45,11 @@ const num = (key: string, def: number) => {
     return Number.isFinite(v) && v > 0 ? v : def;
 };
 
+const numNonNegative = (key: string, def: number) => {
+    const v = process.env[key] ? Number(process.env[key]) : def;
+    return Number.isFinite(v) && v >= 0 ? v : def;
+};
+
 const POLITICS_REGEX =
     /(trump|biden|election|president|senate|congress|governor|nominee|cabinet|supreme court|scotus|fed\b|rate cut|government|parliament|prime minister|referendum|impeach|politic|democrat|republican|gop|dnc|harris|vance|macron|starmer|tariff|sanction|nato|white house|executive order|immigration|deportation|shutdown|debt ceiling|maduro|venezuela leader|regime fall|clarity act)/i;
 
@@ -59,7 +64,7 @@ const EXCLUDE_SLUG_REGEX = /(up-or-down|up-down|updown|-1[0-9]{6,})/i;
 const CONFIG = {
     MIN_TRADE_USD: num('FOLLOW_MIN_TRADE_USD', 1000),
     MAX_ENTRY_PRICE: num('FOLLOW_MAX_ENTRY_PRICE', 0.5),
-    JOIN_DAYS: num('FOLLOW_JOIN_DAYS', 14),
+    JOIN_DAYS: numNonNegative('FOLLOW_JOIN_DAYS', 0),
     MARKET_END_DAYS: num('FOLLOW_MARKET_END_DAYS', 30),
     SWEEP_MARKETS: num('FOLLOW_SWEEP_MARKETS', 200),
     MIN_MARKET_VOLUME: num('FOLLOW_MIN_MARKET_VOLUME', 20000),
@@ -171,6 +176,7 @@ const fetchProfile = async (address: string): Promise<ProfileInfo> => {
     const cached = profileCache.get(key);
     if (cached) return cached;
 
+    const joinFilterEnabled = CONFIG.JOIN_DAYS > 0;
     const joinCutoff = nowSec() - CONFIG.JOIN_DAYS * 86400;
     try {
         const res = await apiGet(
@@ -183,7 +189,7 @@ const fetchProfile = async (address: string): Promise<ProfileInfo> => {
             name: res.data?.name || res.data?.pseudonym || '',
             createdAt,
             createdSec,
-            joinedWithinWindow: createdSec >= joinCutoff,
+            joinedWithinWindow: !joinFilterEnabled || createdSec >= joinCutoff,
             daysSinceJoin: createdSec ? Math.floor((nowSec() - createdSec) / 86400) : null,
         };
         profileCache.set(key, info);
@@ -193,7 +199,7 @@ const fetchProfile = async (address: string): Promise<ProfileInfo> => {
             name: '',
             createdAt: null,
             createdSec: 0,
-            joinedWithinWindow: false,
+            joinedWithinWindow: !joinFilterEnabled,
             daysSinceJoin: null,
         };
         profileCache.set(key, info);
@@ -425,14 +431,22 @@ const printReport = (matches: MatchResult[]) => {
     console.log('\n' + c.cyan('═'.repeat(110)));
     console.log(c.bold('  🎯  FOLLOW-WALLET SCAN (new accounts, large cheap bets, short-dated event markets)'));
     console.log(c.cyan('═'.repeat(110)));
+    const joinFilterLabel =
+        CONFIG.JOIN_DAYS > 0 ? `joined ≤ ${CONFIG.JOIN_DAYS}d` : 'join date filter off';
     console.log(
         c.gray(
-            `  min trade $${CONFIG.MIN_TRADE_USD} | max entry $${CONFIG.MAX_ENTRY_PRICE} | joined ≤ ${CONFIG.JOIN_DAYS}d | market end ≤ ${CONFIG.MARKET_END_DAYS}d | exclude politics/sports/geo\n`
+            `  min trade $${CONFIG.MIN_TRADE_USD} | max entry $${CONFIG.MAX_ENTRY_PRICE} | ${joinFilterLabel} | market end ≤ ${CONFIG.MARKET_END_DAYS}d | exclude politics/sports/geo\n`
         )
     );
 
     if (matches.length === 0) {
-        console.log(c.yellow('  No wallets matched. Try lowering FOLLOW_MIN_TRADE_USD or FOLLOW_JOIN_DAYS.\n'));
+        console.log(
+            c.yellow(
+                '  No wallets matched. Try lowering FOLLOW_MIN_TRADE_USD' +
+                    (CONFIG.JOIN_DAYS > 0 ? ' or FOLLOW_JOIN_DAYS.' : '.') +
+                    '\n'
+            )
+        );
         return;
     }
 
@@ -501,7 +515,11 @@ const main = async () => {
     const wallets = await scanMarkets(markets);
     console.log(c.green(`✓ ${wallets.size} wallets with ≥$${CONFIG.MIN_TRADE_USD} buys @ ≤$${CONFIG.MAX_ENTRY_PRICE}\n`));
 
-    console.log(c.cyan('🔍 Checking join dates and active positions...\n'));
+    const profileStep =
+        CONFIG.JOIN_DAYS > 0
+            ? '🔍 Checking join dates and active positions...\n'
+            : '🔍 Checking profiles and active positions...\n';
+    console.log(c.cyan(profileStep));
     const matches = await buildMatches(wallets);
 
     printReport(matches);

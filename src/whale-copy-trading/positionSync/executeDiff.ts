@@ -70,7 +70,9 @@ export const executePositionChange = async (
             };
         }
 
-        const currentPositionValue = myPosition ? myPosition.size * myPosition.avgPrice : 0;
+        const currentPositionValue = myPosition
+            ? myPosition.currentValue || myPosition.size * myPosition.avgPrice
+            : 0;
         const orderCalc = calculateOrderSize(
             copyConfig,
             traderUsd,
@@ -263,12 +265,51 @@ export const executePositionChanges = async (
                     skipped += 1;
                     continue;
                 }
+
+                const traderUsd =
+                    change.type === 'opened'
+                        ? change.position?.currentValue ?? change.deltaUsd
+                        : change.deltaUsd;
+
+                let myBalance = 0;
+                let currentPositionValue = 0;
+                if (proxyWallet) {
+                    try {
+                        const myPositions = await fetchMyPositions(proxyWallet);
+                        const myPosition = findMyPosition(myPositions, change.asset);
+                        currentPositionValue = myPosition
+                            ? myPosition.currentValue || myPosition.size * myPosition.avgPrice
+                            : 0;
+                    } catch {
+                        // Position fetch failed — assume no existing exposure for dry-run sizing
+                    }
+                    myBalance = Number.MAX_SAFE_INTEGER;
+                }
+
+                const orderCalc = calculateOrderSize(
+                    copyConfig,
+                    traderUsd,
+                    myBalance,
+                    currentPositionValue
+                );
+
+                if (orderCalc.finalAmount === 0) {
+                    skipped += 1;
+                    Logger.warning(
+                        `[Whale Positions] skip buy: ${orderCalc.reasoning} — ${change.title}`
+                    );
+                    continue;
+                }
+
+                Logger.success(
+                    `[Whale Positions] [DRY RUN] Would BUY $${orderCalc.finalAmount.toFixed(2)} @ ${(change.curPrice * 100).toFixed(1)}¢ — ${orderCalc.reasoning} (${change.title})`
+                );
+                executed += 1;
+                continue;
             }
 
-            const traderUsd =
-                change.type === 'opened' || change.type === 'increased' ? change.deltaUsd : 0;
             Logger.success(
-                `[Whale Positions] [DRY RUN] Would ${change.type === 'closed' || change.type === 'decreased' ? 'SELL' : 'BUY'} @ ${(change.curPrice * 100).toFixed(1)}¢ — ~$${traderUsd.toFixed(0)} notional (${change.title})`
+                `[Whale Positions] [DRY RUN] Would ${change.type === 'closed' || change.type === 'decreased' ? 'SELL' : 'BUY'} @ ${(change.curPrice * 100).toFixed(1)}¢ (${change.title})`
             );
             executed += 1;
             continue;

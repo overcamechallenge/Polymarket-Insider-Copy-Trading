@@ -27,7 +27,9 @@ export const executePaperPositionChange = (
                 : change.deltaUsd;
 
         const paperPos = portfolio.getPosition(change.asset);
-        const currentPositionValue = paperPos ? paperPos.tokens * paperPos.avgPrice : 0;
+        const currentPositionValue = paperPos
+            ? paperPos.costUsd || paperPos.tokens * paperPos.avgPrice
+            : 0;
         const orderCalc = calculateOrderSize(
             copyConfig,
             traderUsd,
