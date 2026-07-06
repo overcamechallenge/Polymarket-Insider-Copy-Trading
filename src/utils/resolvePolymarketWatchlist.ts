@@ -57,8 +57,20 @@ const normalizeUsername = (entry: string): string | null => {
 };
 
 const extractProxyWalletFromHtml = (html: string): string | undefined => {
-    const match = html.match(/"proxyWallet":"(0x[a-fA-F0-9]{40})"/i);
-    return match?.[1]?.toLowerCase();
+    const patterns = [
+        /"proxyWallet":"(0x[a-fA-F0-9]{40})"/i,
+        /\\"proxyWallet\\":\\"(0x[a-fA-F0-9]{40})\\"/i,
+    ];
+
+    for (const pattern of patterns) {
+        const match = html.match(pattern);
+        const address = match?.[1];
+        if (address && isValidAddress(address)) {
+            return address.toLowerCase();
+        }
+    }
+
+    return undefined;
 };
 
 const resolveAddressProfile = async (
