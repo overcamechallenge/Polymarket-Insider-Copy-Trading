@@ -56,7 +56,7 @@ export const diffPositionSnapshots = (
     label: string,
     previous: WhalePositionSnapshot | null,
     currentPositions: WhalePositionRecord[],
-    options: { minDeltaUsd: number; minDeltaPct: number }
+    options: { minDeltaUsd: number; minDeltaPct: number; copyOnFirstRun?: boolean }
 ): { isBaseline: boolean; changes: PositionChange[]; snapshot: WhalePositionSnapshot } => {
     const snapshot: WhalePositionSnapshot = {
         wallet: wallet.toLowerCase(),
@@ -65,11 +65,13 @@ export const diffPositionSnapshots = (
         positions: positionsToMap(currentPositions),
     };
 
-    if (!previous) {
+    if (!previous && !options.copyOnFirstRun) {
         return { isBaseline: true, changes: [], snapshot };
     }
 
-    const prevMap = previous.positions;
+    // On the first run with copyOnFirstRun enabled, diff against an empty
+    // snapshot so every current position is reported as freshly opened.
+    const prevMap = previous?.positions ?? {};
     const nextMap = snapshot.positions;
     const changes: PositionChange[] = [];
 

@@ -9,6 +9,7 @@
     "scripts": {
         "find-follow-wallets": "ts-node src/scripts/findFollowWallets.ts",
         "whale-positions:watch": "ts-node src/whale-copy-trading/positionSyncBot.ts",
+        "fifteen-min:copy": "ts-node src/fifteen-min-copy/bot.ts",
         "build": "tsc"
     },
     "dependencies": {
@@ -17,10 +18,12 @@
         "chalk": "^5.4.1",
         "dotenv": "^16.4.7",
         "ethers": "^5.8.0",
-        "socks-proxy-agent": "^10.0.0"
+        "socks-proxy-agent": "^10.0.0",
+        "ws": "^8.21.3"
     },
     "devDependencies": {
         "@types/node": "^22.10.10",
+        "@types/ws": "^8.18.1",
         "ts-node": "^10.9.2",
         "typescript": "^5.7.3"
     }

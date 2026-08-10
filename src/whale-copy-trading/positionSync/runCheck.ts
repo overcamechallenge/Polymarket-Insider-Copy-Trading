@@ -10,6 +10,7 @@ import {
     WHALE_POSITION_MIN_VALUE_USD,
     WHALE_POSITION_DRY_RUN,
     WHALE_POSITION_PAPER_TRADING,
+    WHALE_POSITION_COPY_ON_FIRST_RUN,
     WHALE_RUNTIME,
 } from '../config';
 import { fetchActiveWhalePositions } from './fetchWhalePositions';
@@ -35,10 +36,16 @@ export type PositionSyncSummary = {
 
 export const runPositionSyncCheck = async (
     targets: ResolvedWatchTarget[],
-    options?: { clobClient?: ClobClient | null; dryRun?: boolean; paperTrading?: boolean }
+    options?: {
+        clobClient?: ClobClient | null;
+        dryRun?: boolean;
+        paperTrading?: boolean;
+        copyOnFirstRun?: boolean;
+    }
 ): Promise<PositionSyncSummary> => {
     const paperTrading = options?.paperTrading ?? WHALE_POSITION_PAPER_TRADING;
     const dryRun = paperTrading ? false : (options?.dryRun ?? WHALE_POSITION_DRY_RUN);
+    const copyOnFirstRun = options?.copyOnFirstRun ?? WHALE_POSITION_COPY_ON_FIRST_RUN;
     const summary: PositionSyncSummary = {
         targets: targets.length,
         baselinesSaved: 0,
@@ -66,6 +73,7 @@ export const runPositionSyncCheck = async (
             {
                 minDeltaUsd: WHALE_POSITION_MIN_DELTA_USD,
                 minDeltaPct: WHALE_POSITION_MIN_DELTA_PCT,
+                copyOnFirstRun,
             }
         );
 

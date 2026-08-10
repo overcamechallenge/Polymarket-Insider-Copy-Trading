@@ -5,9 +5,16 @@ dotenv.config();
 
 const isValidEthereumAddress = (address: string): boolean => /^0x[a-fA-F0-9]{40}$/.test(address);
 
-const liveTrading =
+const whaleLive =
     (process.env.WHALE_POSITION_DRY_RUN || 'true').toLowerCase() !== 'true' &&
     (process.env.WHALE_POSITION_PAPER_TRADING || 'false').toLowerCase() !== 'true';
+
+const fifteenMinLive =
+    (process.env.FIFTEEN_MIN_DRY_RUN || 'true').toLowerCase() !== 'true' &&
+    (process.env.FIFTEEN_MIN_PAPER_TRADING || 'false').toLowerCase() !== 'true';
+
+// Require live wallet secrets if either copy bot is configured for real orders.
+const liveTrading = whaleLive || fifteenMinLive;
 
 const validateRequiredEnv = (): void => {
     const required: string[] = [];

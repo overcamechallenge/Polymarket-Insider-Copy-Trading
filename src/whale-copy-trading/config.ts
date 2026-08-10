@@ -37,6 +37,12 @@ export const WHALE_POSITION_DRY_RUN =
 export const WHALE_POSITION_PAPER_TRADING =
     (process.env.WHALE_POSITION_PAPER_TRADING || 'false').toLowerCase() === 'true';
 
+// When true, the first check per wallet mirrors the whale's existing positions
+// (treated as freshly opened). When false (default), the first check only saves
+// a baseline and copying starts on the next check when positions change.
+export const WHALE_POSITION_COPY_ON_FIRST_RUN =
+    (process.env.WHALE_POSITION_COPY_ON_FIRST_RUN || 'false').toLowerCase() === 'true';
+
 export const WHALE_POSITION_PAPER_START_USD = (() => {
     const v = parseFloat(process.env.WHALE_POSITION_PAPER_START_USD || '500');
     if (isNaN(v) || v <= 0) {

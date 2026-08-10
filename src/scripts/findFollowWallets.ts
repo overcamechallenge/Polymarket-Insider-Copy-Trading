@@ -149,6 +149,10 @@ interface MatchResult {
     maxTradeUsd: number;
     totalCheapLargeUsd: number;
     tradeCount: number;
+    firstBetAt: string | null;
+    lastBetAt: string | null;
+    firstBetAgo: string | null;
+    lastBetAgo: string | null;
     topTrades: {
         title: string;
         outcome: string;
@@ -157,6 +161,7 @@ interface MatchResult {
         endDate: string;
         slug: string;
         tradedAt: string;
+        tradedAgo: string;
     }[];
     activePositions: {
         title: string;
@@ -375,6 +380,19 @@ const formatTradeTime = (ts: number): string => {
     return new Date(ms).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 };
 
+const formatAgo = (ts: number): string => {
+    if (!ts) return '?';
+    const sec = ts >= 1e12 ? Math.floor(ts / 1000) : ts;
+    const diff = Math.max(0, nowSec() - sec);
+    if (diff < 60) return `${diff}s ago`;
+    const mins = Math.floor(diff / 60);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(diff / 3600);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(diff / 86400);
+    return `${days}d ago`;
+};
+
 const buildMatches = async (wallets: Map<string, WalletAgg>): Promise<MatchResult[]> => {
     const matches: MatchResult[] = [];
 
@@ -385,6 +403,9 @@ const buildMatches = async (wallets: Map<string, WalletAgg>): Promise<MatchResul
         const positions = await fetchActivePositions(w.address);
         const maxTradeUsd = Math.max(...w.trades.map((t) => t.usd));
         const totalCheapLargeUsd = w.trades.reduce((sum, t) => sum + t.usd, 0);
+        const betTimes = w.trades.map((t) => t.timestamp).filter((ts) => ts > 0);
+        const firstBet = betTimes.length ? Math.min(...betTimes) : 0;
+        const lastBet = betTimes.length ? Math.max(...betTimes) : 0;
 
         matches.push({
             address: w.address,
@@ -394,6 +415,10 @@ const buildMatches = async (wallets: Map<string, WalletAgg>): Promise<MatchResul
             maxTradeUsd: Math.round(maxTradeUsd),
             totalCheapLargeUsd: Math.round(totalCheapLargeUsd),
             tradeCount: w.trades.length,
+            firstBetAt: firstBet ? formatTradeTime(firstBet) : null,
+            lastBetAt: lastBet ? formatTradeTime(lastBet) : null,
+            firstBetAgo: firstBet ? formatAgo(firstBet) : null,
+            lastBetAgo: lastBet ? formatAgo(lastBet) : null,
             topTrades: [...w.trades]
                 .sort((a, b) => b.usd - a.usd)
                 .slice(0, 5)
@@ -405,6 +430,7 @@ const buildMatches = async (wallets: Map<string, WalletAgg>): Promise<MatchResul
                     endDate: t.endDate,
                     slug: t.slug,
                     tradedAt: formatTradeTime(t.timestamp),
+                    tradedAgo: formatAgo(t.timestamp),
                 })),
             activePositions: positions
                 .map((p: any) => ({
@@ -460,12 +486,22 @@ const printReport = (matches: MatchResult[]) => {
                 `\n   ${c.gray(m.profileUrl)}`
         );
 
-        const top = m.topTrades[0];
-        if (top) {
+        if (m.lastBetAt) {
             console.log(
-                `   top trade: ${top.outcome} @ ${top.price} ($${top.usd}) — ${top.title.slice(0, 70)}`
+                c.gray(
+                    `   last bet ${m.lastBetAgo} (${m.lastBetAt})  |  first bet ${m.firstBetAgo} (${m.firstBetAt})`
+                )
             );
-            console.log(c.gray(`              traded ${top.tradedAt} | ends ${top.endDate}`));
+        }
+
+        if (m.topTrades.length > 0) {
+            console.log(`   bets (${m.tradeCount}, top ${m.topTrades.length}):`);
+            m.topTrades.forEach((t) => {
+                console.log(
+                    `     • ${t.outcome} @ ${t.price} ($${t.usd}) — ${t.title.slice(0, 60)}`
+                );
+                console.log(c.gray(`       bet ${t.tradedAgo} (${t.tradedAt}) | ends ${t.endDate}`));
+            });
         }
 
         if (m.activePositions.length > 0) {

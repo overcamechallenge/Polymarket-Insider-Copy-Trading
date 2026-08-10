@@ -10,6 +10,7 @@ import {
     WHALE_WATCH_LIST,
     WHALE_POSITION_PAPER_TRADING,
     WHALE_POSITION_DRY_RUN,
+    WHALE_POSITION_COPY_ON_FIRST_RUN,
     WHALE_COPY_CONFIG,
     getWhalePositionCheckIntervalMs,
     formatWhalePositionCheckInterval,
@@ -54,7 +55,11 @@ export const main = async (): Promise<void> => {
             `[Whale Positions] Per-market position cap: $${WHALE_COPY_CONFIG.maxPositionSizeUSD.toFixed(2)}`
         );
     }
-    Logger.info('[Whale Positions] First run per wallet saves baseline only. Copies start on the next check when positions differ.');
+    if (WHALE_POSITION_COPY_ON_FIRST_RUN) {
+        Logger.info('[Whale Positions] First run per wallet mirrors existing positions immediately (WHALE_POSITION_COPY_ON_FIRST_RUN=true).');
+    } else {
+        Logger.info('[Whale Positions] First run per wallet saves baseline only. Copies start on the next check when positions differ.');
+    }
     Logger.separator();
 
     const intervalMs = getWhalePositionCheckIntervalMs();
