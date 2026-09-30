@@ -6,3 +6,5 @@ logs/
 .DS_Store
 insider_scan_results/
 whale-copy-trading-data/
+trader-analysis-data/
+strike-copy-data/

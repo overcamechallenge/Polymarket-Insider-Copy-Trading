@@ -10,7 +10,12 @@
         "find-follow-wallets": "ts-node src/scripts/findFollowWallets.ts",
         "whale-positions:watch": "ts-node src/whale-copy-trading/positionSyncBot.ts",
         "fifteen-min:copy": "ts-node src/fifteen-min-copy/bot.ts",
-        "build": "tsc"
+        "build": "tsc",
+        "strike-copy": "ts-node src/strike-copy/bot.ts",
+        "trader:download": "ts-node src/trader-analysis/downloadTraderHistory.ts",
+        "trader:markets": "ts-node src/trader-analysis/fetchMarkets.ts",
+        "trader:analyze": "ts-node src/trader-analysis/analyzeTrader.ts",
+        "trader:backtest": "ts-node src/trader-analysis/backtest.ts"
     },
     "dependencies": {
         "@polymarket/clob-client-v2": "^1.0.6",

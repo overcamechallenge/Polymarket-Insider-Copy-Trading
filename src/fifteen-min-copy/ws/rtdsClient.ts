@@ -21,6 +21,8 @@ export type RtdsClientOptions = {
     onOpen?: () => void;
     onClose?: (code: number, reason: string) => void;
     onError?: (error: Error) => void;
+    /** Log prefix, e.g. '15m Copy' or 'Strike Copy'. */
+    label?: string;
 };
 
 /**
@@ -43,6 +45,7 @@ export class RtdsActivityClient {
     private readonly onOpen?: () => void;
     private readonly onClose?: (code: number, reason: string) => void;
     private readonly onError?: (error: Error) => void;
+    private readonly label: string;
 
     constructor(opts: RtdsClientOptions) {
         this.url = opts.url || FIFTEEN_MIN_WS_URL;
@@ -53,6 +56,7 @@ export class RtdsActivityClient {
         this.onOpen = opts.onOpen;
         this.onClose = opts.onClose;
         this.onError = opts.onError;
+        this.label = opts.label || '15m Copy';
     }
 
     start(): void {
@@ -85,12 +89,12 @@ export class RtdsActivityClient {
             wsOpts.agent = new SocksProxyAgent(this.socksProxyUrl) as WebSocket.ClientOptions['agent'];
         }
 
-        Logger.info(`[15m Copy] Connecting RTDS ${this.url}…`);
+        Logger.info(`[${this.label}] Connecting RTDS ${this.url}…`);
         const ws = new WebSocket(this.url, wsOpts);
         this.ws = ws;
 
         ws.on('open', () => {
-            Logger.success('[15m Copy] RTDS connected — subscribing to activity trades');
+            Logger.success(`[${this.label}] RTDS connected — subscribing to activity trades`);
             this.lastMessageAt = Date.now();
             this.subscribe(ws);
             this.startPing(ws);
@@ -111,7 +115,7 @@ export class RtdsActivityClient {
             this.onClose?.(code, reason);
             if (!this.stopped) {
                 Logger.warning(
-                    `[15m Copy] RTDS closed (${code}${reason ? ` ${reason}` : ''}) — reconnecting in ${FIFTEEN_MIN_WS_RECONNECT_MS}ms`
+                    `[${this.label}] RTDS closed (${code}${reason ? ` ${reason}` : ''}) — reconnecting in ${FIFTEEN_MIN_WS_RECONNECT_MS}ms`
                 );
                 this.scheduleReconnect();
             }
@@ -119,7 +123,7 @@ export class RtdsActivityClient {
 
         ws.on('error', (err) => {
             const error = err instanceof Error ? err : new Error(String(err));
-            Logger.error(`[15m Copy] RTDS error: ${error.message}`);
+            Logger.error(`[${this.label}] RTDS error: ${error.message}`);
             this.onError?.(error);
         });
     }
@@ -205,7 +209,7 @@ export class RtdsActivityClient {
             const idle = Date.now() - this.lastMessageAt;
             if (idle < FIFTEEN_MIN_WS_STALE_MS) return;
             Logger.warning(
-                `[15m Copy] RTDS stale (${Math.round(idle / 1000)}s no messages) — forcing reconnect`
+                `[${this.label}] RTDS stale (${Math.round(idle / 1000)}s no messages) — forcing reconnect`
             );
             this.clearPing();
             this.clearStaleWatch();

@@ -44,6 +44,14 @@ const fetchData = async (url: string) => {
         } catch (error) {
             const isLastAttempt = attempt === retries;
 
+            // Rate limited: back off and retry (data-api returns 429 on heavy paging).
+            if (axios.isAxiosError(error) && error.response?.status === 429 && !isLastAttempt) {
+                const delay = retryDelay * Math.pow(2, attempt); // 2s, 4s, 8s…
+                console.warn(`⚠️  Rate limited (429), retrying in ${delay / 1000}s...`);
+                await sleep(delay);
+                continue;
+            }
+
             if (isNetworkError(error) && !isLastAttempt) {
                 const delay = retryDelay * Math.pow(2, attempt - 1); // Exponential backoff: 1s, 2s, 4s
                 console.warn(
