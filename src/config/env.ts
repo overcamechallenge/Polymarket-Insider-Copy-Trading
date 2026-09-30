@@ -13,8 +13,12 @@ const fifteenMinLive =
     (process.env.FIFTEEN_MIN_DRY_RUN || 'true').toLowerCase() !== 'true' &&
     (process.env.FIFTEEN_MIN_PAPER_TRADING || 'false').toLowerCase() !== 'true';
 
-// Require live wallet secrets if either copy bot is configured for real orders.
-const liveTrading = whaleLive || fifteenMinLive;
+const strikeCopyLive =
+    (process.env.STRIKE_COPY_DRY_RUN || 'true').toLowerCase() !== 'true' &&
+    (process.env.STRIKE_COPY_PAPER_TRADING || 'false').toLowerCase() !== 'true';
+
+// Require live wallet secrets if any copy bot is configured for real orders.
+const liveTrading = whaleLive || fifteenMinLive || strikeCopyLive;
 
 const validateRequiredEnv = (): void => {
     const required: string[] = [];
