@@ -38,9 +38,11 @@ import {
     STRIKE_COPY_RUNTIME,
     STRIKE_COPY_SETTLE_INTERVAL_MS,
     STRIKE_COPY_WATCH_LIST,
+    STRIKE_COPY_WS_STALE_MS,
+    STRIKE_COPY_MAX_SLIPPAGE_PCT,
 } from './config';
 import { liveMarketBuy, warmToken } from './execute';
-import { getMarketEndTsFast, prefetchMarketEnd } from './marketInfo';
+import { getMarketEndTsOrFetch, prefetchMarketEnd } from './marketInfo';
 import { loadPaper, savePaper } from './paperStore';
 import { FillAggregator, getCopySkipReason, sizeOrder } from './strategy';
 import { ClobMarketWsClient } from './ws/clobMarketWs';
@@ -146,7 +148,7 @@ export const handleTrade = async (s: State, t: RtdsActivityTrade): Promise<void>
     const label = t.slug || t.title || t.asset;
     if (t.side === 'BUY' && STRATEGY.includeRegex.test(`${t.slug} ${t.title || ''}`) && !STRATEGY.excludeRegex.test(`${t.slug} ${t.title || ''}`)) prepareToken(s, t);
 
-    const endTs = t.side === 'BUY' && t.conditionId ? getMarketEndTsFast(t.conditionId, t.slug) : null;
+    const endTs = t.side === 'BUY' && t.conditionId ? await getMarketEndTsOrFetch(t.conditionId, t.slug) : null;
     const skip = getCopySkipReason(
         { side: t.side, price: t.price, usd: t.usd, slug: t.slug, title: t.title, endTs, ts: tradeTsSec(t) },
         STRATEGY
@@ -173,7 +175,8 @@ export const handleTrade = async (s: State, t: RtdsActivityTrade): Promise<void>
         return;
     }
 
-    const maxPrice = Math.min(STRATEGY.maxBuyPrice, flushed.vwap + STRIKE_COPY_MAX_SLIPPAGE);
+    const slipAllowed = Math.max(STRIKE_COPY_MAX_SLIPPAGE, (flushed.vwap * STRIKE_COPY_MAX_SLIPPAGE_PCT) / 100);
+    const maxPrice = Math.min(STRATEGY.maxBuyPrice, flushed.vwap + slipAllowed);
     const top = s.books.getTop(t.asset);
     const bookNote = top?.bestAsk != null ? ` book ${(top.bestAsk * 100).toFixed(1)}¢` : ' book n/a';
 
@@ -285,6 +288,7 @@ export const main = async (): Promise<void> => {
     s.books.start();
     const client = new RtdsActivityClient({
         label: TAG,
+        staleMs: STRIKE_COPY_WS_STALE_MS,
         socksProxyUrl: ENV.SOCKS_PROXY_URL,
         walletFilter: s.watch,
         onActivity: () => {

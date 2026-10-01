@@ -47,6 +47,11 @@ export const endTsFromSlug = (slug: string | undefined): number | null => {
         const [, kind, mon, day, year] = m;
         return at(year ? Number(year) : thisYear, MONTHS[mon] - 1, Number(day), kind === 'by' || midnightEt);
     }
+    // Cross-month range: `…-september-28-october-4-2026`
+    m = s.match(/-([a-z]+)-(\d{1,2})-([a-z]+)-(\d{1,2})-(\d{4})(?:-|$)/);
+    if (m && MONTHS[m[1]] && MONTHS[m[3]]) {
+        return at(Number(m[5]), MONTHS[m[3]] - 1, Number(m[4]), true);
+    }
     m = s.match(/-([a-z]+)-(\d{1,2})-(\d{1,2})-(\d{4})(?:-|$)/);
     if (m && MONTHS[m[1]]) {
         const [, mon, , d2, year] = m;
@@ -100,4 +105,15 @@ export const getMarketEndTsFast = (conditionId: string, slug: string | undefined
     cache.set(conditionId, { endTs: derived, exact: false, at: Date.now() });
     void prefetchMarketEnd(conditionId);
     return derived;
+};
+
+/**
+ * End time with a blocking gamma lookup only when the slug gives nothing
+ * (one ~200 ms request per unknown market, cached afterwards).
+ */
+export const getMarketEndTsOrFetch = async (conditionId: string, slug: string | undefined): Promise<number | null> => {
+    const fast = getMarketEndTsFast(conditionId, slug);
+    if (fast !== null) return fast;
+    await prefetchMarketEnd(conditionId);
+    return cache.get(conditionId)?.endTs ?? null;
 };

@@ -23,6 +23,8 @@ export type RtdsClientOptions = {
     onError?: (error: Error) => void;
     /** Log prefix, e.g. '15m Copy' or 'Strike Copy'. */
     label?: string;
+    /** Override stale-socket threshold (ms). */
+    staleMs?: number;
 };
 
 /**
@@ -46,6 +48,7 @@ export class RtdsActivityClient {
     private readonly onClose?: (code: number, reason: string) => void;
     private readonly onError?: (error: Error) => void;
     private readonly label: string;
+    private readonly staleMs: number;
 
     constructor(opts: RtdsClientOptions) {
         this.url = opts.url || FIFTEEN_MIN_WS_URL;
@@ -57,6 +60,7 @@ export class RtdsActivityClient {
         this.onClose = opts.onClose;
         this.onError = opts.onError;
         this.label = opts.label || '15m Copy';
+        this.staleMs = opts.staleMs ?? FIFTEEN_MIN_WS_STALE_MS;
     }
 
     start(): void {
@@ -207,7 +211,7 @@ export class RtdsActivityClient {
         this.staleTimer = setInterval(() => {
             if (this.stopped || this.ws !== ws) return;
             const idle = Date.now() - this.lastMessageAt;
-            if (idle < FIFTEEN_MIN_WS_STALE_MS) return;
+            if (idle < this.staleMs) return;
             Logger.warning(
                 `[${this.label}] RTDS stale (${Math.round(idle / 1000)}s no messages) — forcing reconnect`
             );

@@ -34,6 +34,10 @@ export const STRIKE_COPY_PAPER_TRADING = bool('STRIKE_COPY_PAPER_TRADING', false
 export const STRIKE_COPY_PAPER_START_USD = num('STRIKE_COPY_PAPER_START_USD', 1000, 1);
 /** Max cents above the trader's price we are willing to lift asks at (live mode). */
 export const STRIKE_COPY_MAX_SLIPPAGE = num('STRIKE_COPY_MAX_SLIPPAGE', 0.02, 0);
+/** Extra slippage allowed as % of the trader's price (0 = off). Cheap tokens have wide spreads; e.g. 40 lets a 3¢ fill be copied up to 4.2¢. */
+export const STRIKE_COPY_MAX_SLIPPAGE_PCT = num('STRIKE_COPY_MAX_SLIPPAGE_PCT', 0, 0);
+/** Reconnect the RTDS feed after this long without any message. 8s (15m bot default) reconnects too often during quiet periods. */
+export const STRIKE_COPY_WS_STALE_MS = num('STRIKE_COPY_WS_STALE_MS', 30_000, 3_000);
 export const STRIKE_COPY_SETTLE_INTERVAL_MS = num('STRIKE_COPY_SETTLE_INTERVAL_MS', 10 * 60_000, 30_000);
 export const STRIKE_COPY_EQUITY_REFRESH_MS = num('STRIKE_COPY_EQUITY_REFRESH_MS', 60_000, 10_000);
 
