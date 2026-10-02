@@ -6,7 +6,24 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p logs strike-copy-data
-export SOCKS_PROXY_URL=   # shell proxy in ~/.zprofile has bad credentials; direct works
+# .env is the source of truth for the proxy; it overrides any stale shell export (e.g. ~/.zprofile).
+if [ -f .env ]; then
+  ENV_PROXY=$(grep -E '^SOCKS_PROXY_URL=' .env | tail -1 | cut -d= -f2- | tr -d "'\"" | tr -d '[:space:]')
+  [ -n "$ENV_PROXY" ] && export SOCKS_PROXY_URL="$ENV_PROXY"
+fi
+# SOCKS proxy: the exchange geo-blocks order placement from many regions, so live
+# trading normally needs it. Taken from .env or the shell environment as-is.
+# To force direct access for a read-only/paper session:  SOCKS_PROXY_URL= ./scripts/start-copy-bots.sh
+if [ -n "${SOCKS_PROXY_URL:-}" ]; then
+  if curl -s -m 15 --proxy "$SOCKS_PROXY_URL" https://api.ipify.org >/dev/null 2>&1; then
+    echo "proxy OK: $(echo "$SOCKS_PROXY_URL" | sed -E 's#//[^@]*@#//***@#') → exit IP $(curl -s -m 15 --proxy "$SOCKS_PROXY_URL" https://api.ipify.org)"
+  else
+    echo "WARNING: SOCKS_PROXY_URL is set but the proxy rejected the connection (bad credentials or IP not whitelisted)."
+    echo "         Live orders will go through it and fail. Fix the proxy or unset it before starting."
+  fi
+else
+  echo "NOTE: no SOCKS_PROXY_URL — connecting directly. Live orders will be geo-blocked unless this host is in an allowed region."
+fi
 
 stop() { pkill -f "strike-copy/bot.ts" 2>/dev/null || true; sleep 1; }
 

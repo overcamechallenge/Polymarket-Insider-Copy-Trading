@@ -102,7 +102,7 @@ const prepareToken = (s: State, t: RtdsActivityTrade): void => {
     if (t.conditionId) void prefetchMarketEnd(t.conditionId);
     if (s.clob && !s.warmed.has(t.asset)) {
         s.warmed.add(t.asset);
-        warmToken(s.clob, t.asset).catch(() => s.warmed.delete(t.asset));
+        warmToken(s.clob, t.asset, t.conditionId || undefined).catch(() => s.warmed.delete(t.asset));
     }
 };
 
@@ -210,7 +210,13 @@ export const handleTrade = async (s: State, t: RtdsActivityTrade): Promise<void>
         fillPrice = top?.bestAsk ?? flushed.vwap;
         msg = `[DRY RUN] BUY $${sized.amount.toFixed(2)} ≤ ${(maxPrice * 100).toFixed(1)}¢${bookNote} — ${flushed.fills} fills, ${sized.reason}`;
     } else {
-        const r = await liveMarketBuy(s.clob, t.asset, sized.amount, maxPrice);
+        const r = await liveMarketBuy(s.clob, t.asset, sized.amount, maxPrice).catch((e) => ({
+            ok: false,
+            filledUsd: 0,
+            tokens: 0,
+            avgPrice: 0,
+            message: `exception: ${e instanceof Error ? e.message : String(e)}`,
+        }));
         ok = r.ok;
         fillPrice = r.avgPrice;
         msg = r.ok

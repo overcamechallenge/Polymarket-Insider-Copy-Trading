@@ -4,17 +4,33 @@ import { withSilencedSdkConsole } from '../utils/clobSdkSilence';
 
 type LiveBuyResult = { ok: boolean; filledUsd: number; tokens: number; avgPrice: number; message: string };
 
-type OrderResp = { success?: boolean; errorMsg?: string; status?: string; makingAmount?: string; takingAmount?: string };
+type OrderResp = { success?: boolean; error?: unknown; errorMsg?: string; status?: string | number; makingAmount?: string; takingAmount?: string };
+
+const describeError = (r: OrderResp | undefined): string => {
+    if (!r) return 'empty response';
+    if (typeof r.error === 'string') return r.error;
+    if (r.error && typeof r.error === 'object') return JSON.stringify(r.error);
+    if (r.errorMsg) return r.errorMsg;
+    return `rejected (status ${String(r.status ?? '?')})`;
+};
 
 const run = <T>(fn: () => Promise<T>) => withSilencedSdkConsole(ENV.CLOB_SDK_SILENCE_ERRORS, fn);
 
 /**
- * Pre-load tick size / neg-risk / fee info for a token so that order signing
- * later needs zero HTTP lookups. Safe to call repeatedly (SDK caches).
+ * Pre-load everything the SDK touches when signing/posting an order so the
+ * order path is a single HTTP POST: market info (tick size, neg-risk, fee
+ * info, token→condition map), API version, and the market fee rate.
+ * Safe to call repeatedly (SDK caches).
  */
-export const warmToken = async (clobClient: ClobClient, tokenId: string): Promise<void> => {
-    await run(() => clobClient.getTickSize(tokenId));
-    await run(() => clobClient.getNegRisk(tokenId));
+export const warmToken = async (clobClient: ClobClient, tokenId: string, conditionId?: string): Promise<void> => {
+    if (conditionId) await run(() => clobClient.getClobMarketInfo(conditionId));
+    else {
+        await run(() => clobClient.getTickSize(tokenId));
+        await run(() => clobClient.getNegRisk(tokenId));
+    }
+    // resolveVersion is private in the SDK typings but cheap to call once; result is cached
+    await run(() => (clobClient as unknown as { resolveVersion: () => Promise<unknown> }).resolveVersion()).catch(() => undefined);
+    await run(() => clobClient.getFeeRateBps(tokenId)).catch(() => undefined);
 };
 
 /**
@@ -45,7 +61,7 @@ export const liveMarketBuy = async (
     const filledUsd = parseFloat(resp?.makingAmount ?? '0') || 0;
     const tokens = parseFloat(resp?.takingAmount ?? '0') || 0;
     if (resp?.success !== true) {
-        return { ok: false, filledUsd: 0, tokens: 0, avgPrice: 0, message: resp?.errorMsg || resp?.status || 'order rejected' };
+        return { ok: false, filledUsd: 0, tokens: 0, avgPrice: 0, message: describeError(resp) };
     }
     if (filledUsd <= 0) {
         return { ok: false, filledUsd: 0, tokens: 0, avgPrice: 0, message: `no fill ≤ ${(price * 100).toFixed(1)}¢ (${resp.status || 'unmatched'})` };
