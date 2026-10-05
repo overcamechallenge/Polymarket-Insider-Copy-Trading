@@ -31,15 +31,25 @@ status() {
   for f in logs/strike-copy-paper.log logs/strike-copy-coinman2.log logs/strike-copy-c03b.log; do
     [ -f "$f" ] || continue
     echo "== $f"
-    sed 's/\x1b\[[0-9;]*m//g' "$f" | grep -aE "stats —|PAPER BUY|PAPER SETTLE|BUY \$|buy failed|exception" | tail -4
+    sed 's/\x1b\[[0-9;]*m//g' "$f" | grep -aE "stats —|PAPER BUY|PAPER SETTLE|BUY \$|buy failed|exception" | tail -4 || true
   done
   echo "running processes: $(pgrep -f 'node.*strike-copy/bot.ts' | wc -l | tr -d ' ')"
+  if command -v systemctl >/dev/null 2>&1; then
+    for u in polymarket-bot@coinman2 polymarket-bot@c03b; do
+      st=$(systemctl is-active "$u" 2>/dev/null || true); [ -n "$st" ] && echo "systemd $u: $st"
+    done
+  fi
 }
 
 case "${1:-start}" in
   stop)   stop; echo "stopped" ;;
   status) status ;;
   start)
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet polymarket-bot@coinman2 2>/dev/null; then
+      echo "Bots are managed by systemd. Use:  systemctl restart polymarket-bot@coinman2 polymarket-bot@c03b"
+      echo "(starting them here as well would run two copies against the same wallet)"
+      exit 1
+    fi
     stop
     # 1) coinman2 — crypto strikes, settings from .env (2%, 2–40¢, ≥6h)
     nohup npx ts-node src/strike-copy/bot.ts >> logs/strike-copy-paper.log 2>&1 &
