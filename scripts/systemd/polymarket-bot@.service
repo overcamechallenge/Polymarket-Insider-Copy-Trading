@@ -1,0 +1,20 @@
+# One bot instance per name: polymarket-bot@coinman2 and polymarket-bot@c03b
+# Settings: .env (shared) + .env.<name> (overrides, optional). Installed by scripts/systemd/install.sh
+[Unit]
+Description=Polymarket strike-copy bot (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__PROJECT__
+EnvironmentFile=-__PROJECT__/.env.%i
+Environment=PATH=__NODE_DIR__:/usr/local/bin:/usr/bin:/bin
+ExecStart=__NODE_DIR__/npx ts-node src/strike-copy/bot.ts
+Restart=always
+RestartSec=10
+StandardOutput=append:__PROJECT__/logs/strike-copy-%i.log
+StandardError=append:__PROJECT__/logs/strike-copy-%i.log
+
+[Install]
+WantedBy=multi-user.target

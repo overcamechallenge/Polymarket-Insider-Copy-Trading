@@ -8,3 +8,5 @@ insider_scan_results/
 whale-copy-trading-data/
 trader-analysis-data/
 strike-copy-data/
+.env.*
+!.env.example
