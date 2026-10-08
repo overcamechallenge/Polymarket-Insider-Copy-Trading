@@ -40,8 +40,10 @@ import {
     STRIKE_COPY_WATCH_LIST,
     STRIKE_COPY_WS_STALE_MS,
     STRIKE_COPY_MAX_SLIPPAGE_PCT,
+    STRIKE_COPY_MIRROR_SELLS,
+    STRIKE_COPY_SELL_MIN_SHARES,
 } from './config';
-import { liveMarketBuy, warmToken } from './execute';
+import { getMinOrderShares, liveMarketBuy, liveMarketSell, warmToken } from './execute';
 import { getMarketEndTsOrFetch, prefetchMarketEnd } from './marketInfo';
 import { loadPaper, savePaper } from './paperStore';
 import { FillAggregator, getCopySkipReason, sizeOrder } from './strategy';
@@ -53,7 +55,7 @@ const TAG = 'Strike Copy';
 const STRATEGY = loadStrikeCopyStrategy();
 const LAG_SAMPLES = 500;
 
-type LiveAccount = { cashUsd: number; positionCostUsd: Map<string, number>; equityUsd: number; at: number };
+type LiveAccount = { cashUsd: number; positionCostUsd: Map<string, number>; positionShares: Map<string, number>; equityUsd: number; at: number };
 
 export type State = {
     watch: Set<string>;
@@ -61,6 +63,8 @@ export type State = {
     paper: PaperPortfolio | null;
     live: LiveAccount;
     agg: FillAggregator;
+    /** Scaled sell shares per token, flushed at the exchange minimum. */
+    sellAgg: FillAggregator;
     books: ClobMarketWsClient;
     warmed: Set<string>;
     seen: Set<string>;
@@ -69,7 +73,7 @@ export type State = {
     lagMs: number[];
     localMs: number[];
     slipBps: number[];
-    stats: { stream: number; wallet: number; skipped: number; aggregated: number; orders: number; failed: number; reconnects: number };
+    stats: { stream: number; wallet: number; skipped: number; aggregated: number; orders: number; sells: number; failed: number; reconnects: number };
 };
 
 const mode = () => (STRIKE_COPY_PAPER_TRADING ? 'PAPER' : STRIKE_COPY_DRY_RUN ? 'DRY' : 'LIVE');
@@ -113,15 +117,17 @@ const refreshLiveAccount = async (s: State): Promise<void> => {
     try {
         const positions = (await fetchData(`https://data-api.polymarket.com/positions?user=${wallet}&sizeThreshold=0`)) as UserPositionInterface[];
         const cost = new Map<string, number>();
+        const shares = new Map<string, number>();
         let value = 0;
         for (const p of Array.isArray(positions) ? positions : []) {
             const c = p.initialValue ?? p.size * p.avgPrice;
             cost.set(p.asset, c);
+            shares.set(p.asset, p.size);
             value += p.currentValue ?? c;
         }
         let cash = s.live.cashUsd;
         if (s.clob) cash = await getSpendableUsdcForBuys(s.clob, wallet);
-        s.live = { cashUsd: cash, positionCostUsd: cost, equityUsd: cash + value, at: Date.now() };
+        s.live = { cashUsd: cash, positionCostUsd: cost, positionShares: shares, equityUsd: cash + value, at: Date.now() };
     } catch (e) {
         Logger.warning(`[${TAG}] account refresh failed: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -140,13 +146,98 @@ const accountView = (s: State, asset: string): { cash: number; equity: number; p
     return { cash: s.live.cashUsd, equity: s.live.equityUsd, posCost: s.live.positionCostUsd.get(asset) ?? 0 };
 };
 
+/** Shares of a token we hold right now (paper or live-tracked). */
+const heldShares = (s: State, asset: string): number => {
+    if (s.paper) return s.paper.getPosition(asset)?.tokens ?? 0;
+    return s.live.positionShares.get(asset) ?? 0;
+};
+
+/**
+ * Mirror a trader SELL: sell copyPercent of the shares they sold, aggregated per
+ * token until the exchange minimum, never more than we hold. Price floor is the
+ * trader's price minus the slippage cap.
+ */
+const handleSell = async (s: State, t: RtdsActivityTrade, label: string): Promise<void> => {
+    const hay = `${t.slug} ${t.title || ''}`;
+    if (STRATEGY.excludeRegex.test(hay) || !STRATEGY.includeRegex.test(hay)) {
+        s.stats.skipped += 1;
+        return;
+    }
+    const held = heldShares(s, t.asset);
+    if (held <= 0) {
+        s.stats.skipped += 1;
+        Logger.info(`[${TAG}] skip SELL ${t.size.toFixed(0)} sh @ ${(t.price * 100).toFixed(1)}¢ ${label} — we hold none`);
+        return;
+    }
+    const scaled = (t.size * STRATEGY.copyPercent) / 100;
+    const flushed = s.sellAgg.add(t.asset, scaled, t.price, Math.floor(Date.now() / 1000));
+    if (!flushed) {
+        s.stats.aggregated += 1;
+        Logger.info(`[${TAG}] +${scaled.toFixed(2)} sh → sell bucket ${s.sellAgg.pending(t.asset).toFixed(2)} sh (${t.outcome} @ ${(t.price * 100).toFixed(1)}¢) ${label}`);
+        return;
+    }
+    const minShares = Math.max(STRIKE_COPY_SELL_MIN_SHARES, getMinOrderShares(t.asset));
+    // If the remainder after this sell would be unsellable dust, sell it all.
+    let shares = Math.min(flushed.usd, held);
+    if (held - shares < minShares) shares = held;
+    if (shares < minShares) {
+        s.stats.skipped += 1;
+        Logger.warning(`[${TAG}] skip SELL ${label} — ${shares.toFixed(2)} sh below exchange minimum ${minShares}`);
+        return;
+    }
+    const slipAllowed = Math.max(STRIKE_COPY_MAX_SLIPPAGE, (flushed.vwap * STRIKE_COPY_MAX_SLIPPAGE_PCT) / 100);
+    const minPrice = Math.max(0.01, flushed.vwap - slipAllowed);
+    const top = s.books.getTop(t.asset);
+    if (top?.bestBid != null && top.bestBid < minPrice) {
+        s.stats.skipped += 1;
+        Logger.warning(`[${TAG}] skip SELL ${label} — best bid ${(top.bestBid * 100).toFixed(1)}¢ < floor ${(minPrice * 100).toFixed(1)}¢`);
+        return;
+    }
+
+    Logger.trade(t.proxyWallet, 'SELL', { asset: t.asset, side: 'SELL', amount: t.usd, price: t.price, eventSlug: t.eventSlug || t.slug, outcome: t.outcome, title: label });
+    let ok = false;
+    let msg = '';
+    if (s.paper) {
+        const px = top?.bestBid != null ? Math.max(top.bestBid, minPrice) : Math.max(0.01, flushed.vwap - 0.01);
+        const r = s.paper.paperSellTokens({ asset: t.asset, conditionId: t.conditionId, slug: t.slug, outcome: t.outcome, price: px, tokens: shares });
+        ok = r.ok;
+        msg = r.ok ? `PAPER SELL ${r.fill.tokens.toFixed(2)} sh @ ${(r.fill.price * 100).toFixed(1)}¢ → $${r.fill.usdcAmount.toFixed(2)} (trader sold ${t.size.toFixed(0)} sh, we held ${held.toFixed(2)})` : `paper sell failed: ${r.reason}`;
+        savePaper(s.paper);
+    } else if (STRIKE_COPY_DRY_RUN || !s.clob) {
+        ok = true;
+        msg = `[DRY RUN] SELL ${shares.toFixed(2)} sh ≥ ${(minPrice * 100).toFixed(1)}¢ (trader sold ${t.size.toFixed(0)} sh, we held ${held.toFixed(2)})`;
+    } else {
+        const r = await liveMarketSell(s.clob, t.asset, shares, minPrice).catch((e) => ({ ok: false, soldShares: 0, receivedUsd: 0, avgPrice: 0, message: `exception: ${e instanceof Error ? e.message : String(e)}` }));
+        ok = r.ok;
+        msg = r.ok ? `SELL ${r.soldShares.toFixed(2)} of ${shares.toFixed(2)} sh @ ${(r.avgPrice * 100).toFixed(1)}¢ → $${r.receivedUsd.toFixed(2)} (${r.message})` : `sell failed — ${r.message}`;
+        if (r.ok) {
+            s.live.cashUsd += r.receivedUsd;
+            const left = Math.max(0, held - r.soldShares);
+            s.live.positionShares.set(t.asset, left);
+            const cost = s.live.positionCostUsd.get(t.asset) ?? 0;
+            s.live.positionCostUsd.set(t.asset, held > 0 ? cost * (left / held) : 0);
+        }
+    }
+    if (ok) {
+        s.stats.sells += 1;
+        Logger.success(`[${TAG}] ${msg} — ${t.outcome} ${label}`);
+    } else {
+        s.stats.failed += 1;
+        Logger.warning(`[${TAG}] ${msg} — ${label}`);
+    }
+};
+
 export const handleTrade = async (s: State, t: RtdsActivityTrade): Promise<void> => {
     if (!s.watch.has(t.proxyWallet)) return;
     s.stats.wallet += 1;
     if (!remember(s, tradeDedupKey(t))) return;
 
     const label = t.slug || t.title || t.asset;
-    if (t.side === 'BUY' && STRATEGY.includeRegex.test(`${t.slug} ${t.title || ''}`) && !STRATEGY.excludeRegex.test(`${t.slug} ${t.title || ''}`)) prepareToken(s, t);
+    if (t.side === 'SELL' && STRIKE_COPY_MIRROR_SELLS) {
+        await handleSell(s, t, label);
+        return;
+    }
+    if (STRATEGY.includeRegex.test(`${t.slug} ${t.title || ''}`) && !STRATEGY.excludeRegex.test(`${t.slug} ${t.title || ''}`)) prepareToken(s, t);
 
     const endTs = t.side === 'BUY' && t.conditionId ? await getMarketEndTsOrFetch(t.conditionId, t.slug) : null;
     const skip = getCopySkipReason(
@@ -225,6 +316,7 @@ export const handleTrade = async (s: State, t: RtdsActivityTrade): Promise<void>
         if (r.ok) {
             s.live.cashUsd -= r.filledUsd;
             s.live.positionCostUsd.set(t.asset, (s.live.positionCostUsd.get(t.asset) ?? 0) + r.filledUsd);
+            s.live.positionShares.set(t.asset, (s.live.positionShares.get(t.asset) ?? 0) + r.tokens);
         }
     }
 
@@ -254,8 +346,9 @@ export const createState = (watchAddresses: string[]): State => ({
     watch: new Set(watchAddresses.map((a) => a.toLowerCase())),
     clob: null,
     paper: null,
-    live: { cashUsd: 0, positionCostUsd: new Map(), equityUsd: 0, at: 0 },
+    live: { cashUsd: 0, positionCostUsd: new Map(), positionShares: new Map(), equityUsd: 0, at: 0 },
     agg: new FillAggregator(STRATEGY.minOrderUsd, STRATEGY.aggregateTtlSec),
+    sellAgg: new FillAggregator(STRIKE_COPY_SELL_MIN_SHARES, STRATEGY.aggregateTtlSec),
     books: new ClobMarketWsClient({ socksProxyUrl: ENV.SOCKS_PROXY_URL, label: `${TAG} books` }),
     warmed: new Set(),
     seen: new Set(),
@@ -264,7 +357,7 @@ export const createState = (watchAddresses: string[]): State => ({
     lagMs: [],
     localMs: [],
     slipBps: [],
-    stats: { stream: 0, wallet: 0, skipped: 0, aggregated: 0, orders: 0, failed: 0, reconnects: 0 },
+    stats: { stream: 0, wallet: 0, skipped: 0, aggregated: 0, orders: 0, sells: 0, failed: 0, reconnects: 0 },
 });
 
 export const main = async (): Promise<void> => {
@@ -317,7 +410,7 @@ export const main = async (): Promise<void> => {
             const speed = s.lagMs.length
                 ? ` | lag p50 ${(pct(s.lagMs, 50) / 1000).toFixed(1)}s p95 ${(pct(s.lagMs, 95) / 1000).toFixed(1)}s · local p50 ${pct(s.localMs, 50)}ms · slip p50 ${(pct(s.slipBps, 50) / 100).toFixed(2)}%`
                 : '';
-            Logger.info(`[${TAG}] stats — stream:${st.stream} wallet:${st.wallet} skipped:${st.skipped} bucketed:${st.aggregated} orders:${st.orders} failed:${st.failed} reconnects:${st.reconnects} | cash $${acct.cash.toFixed(0)} equity $${acct.equity.toFixed(0)} buckets:${s.agg.size()} books:${s.books.size()}${speed}`);
+            Logger.info(`[${TAG}] stats — stream:${st.stream} wallet:${st.wallet} skipped:${st.skipped} bucketed:${st.aggregated} orders:${st.orders} sells:${st.sells} failed:${st.failed} reconnects:${st.reconnects} | cash $${acct.cash.toFixed(0)} equity $${acct.equity.toFixed(0)} buckets:${s.agg.size()} books:${s.books.size()}${speed}`);
         }, 60_000)
     );
     if (s.paper) {

@@ -38,6 +38,10 @@ export const STRIKE_COPY_MAX_SLIPPAGE = num('STRIKE_COPY_MAX_SLIPPAGE', 0.02, 0)
 export const STRIKE_COPY_MAX_SLIPPAGE_PCT = num('STRIKE_COPY_MAX_SLIPPAGE_PCT', 0, 0);
 /** Reconnect the RTDS feed after this long without any message. 8s (15m bot default) reconnects too often during quiet periods. */
 export const STRIKE_COPY_WS_STALE_MS = num('STRIKE_COPY_WS_STALE_MS', 30_000, 3_000);
+/** Mirror the trader's SELLs: sell copyPercent of the shares they sold, capped at what we hold. */
+export const STRIKE_COPY_MIRROR_SELLS = bool('STRIKE_COPY_MIRROR_SELLS', true);
+/** Aggregate scaled sell shares per token until this many accumulate (exchange minimum is usually 5 shares). */
+export const STRIKE_COPY_SELL_MIN_SHARES = num('STRIKE_COPY_SELL_MIN_SHARES', 5, 0.01);
 export const STRIKE_COPY_SETTLE_INTERVAL_MS = num('STRIKE_COPY_SETTLE_INTERVAL_MS', 10 * 60_000, 30_000);
 export const STRIKE_COPY_EQUITY_REFRESH_MS = num('STRIKE_COPY_EQUITY_REFRESH_MS', 60_000, 10_000);
 
@@ -68,6 +72,6 @@ export const STRIKE_COPY_RUNTIME = {
 };
 
 export const describeStrategy = (s: StrikeCopyStrategyConfig): string =>
-    `BUY-only · crypto strike markets · price ${(s.minBuyPrice * 100).toFixed(0)}–${(s.maxBuyPrice * 100).toFixed(0)}¢ · ≥${s.minHoursToEnd}h to resolution` +
+    `${STRIKE_COPY_MIRROR_SELLS ? 'BUY + mirrored SELLs' : 'BUY-only'} · crypto strike markets · price ${(s.minBuyPrice * 100).toFixed(0)}–${(s.maxBuyPrice * 100).toFixed(0)}¢ · ≥${s.minHoursToEnd}h to resolution` +
     ` · copy ${s.copyPercent}% (aggregate to $${s.minOrderUsd}) · order ≤ $${s.maxOrderUsd}${s.maxOrderPctEquity ? ` / ${s.maxOrderPctEquity}% eq` : ''}` +
     ` · position ≤ $${s.maxPositionUsd}${s.maxPositionPctEquity ? ` / ${s.maxPositionPctEquity}% eq` : ''}`;

@@ -122,9 +122,10 @@ const main = async () => {
     const dir = path.join(process.cwd(), 'trader-analysis-data', name);
     fs.mkdirSync(dir, { recursive: true });
 
+    // Anonymous wallets have no public profile (404); don't let that stop the download.
     const profile = await fetchData(
         `https://gamma-api.polymarket.com/public-profile?address=${resolved.address}`
-    );
+    ).catch(() => ({ proxyWallet: resolved.address }));
     fs.writeFileSync(path.join(dir, 'profile.json'), JSON.stringify(profile, null, 2));
     console.log(`Trader: ${resolved.name} ${resolved.address} → ${dir}`);
 

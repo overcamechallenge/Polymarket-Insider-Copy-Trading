@@ -89,7 +89,7 @@ Strategy rules (all configurable through `STRIKE_COPY_*` in `.env`):
 
 | Rule | Default | Why |
 |---|---|---|
-| Side | BUY only | trader holds to resolution; 0 sells in 96k fills |
+| Side | BUY, plus mirrored SELLs (`STRIKE_COPY_MIRROR_SELLS`) | sells copy the same % of shares the trader sold, capped at holdings; coinman2 never sells, but other wallets do |
 | Markets | crypto strike (above/below/between/dip/reach) | daily Up/Down ≈ 0 EV, 5m/15m negative |
 | Price band | 2–40¢ | <40¢ legs: +20–50% ROI; 60–90¢ legs: −10% |
 | Time to resolution | ≥ 6h | last-hours scalps underperform |
@@ -98,6 +98,7 @@ Strategy rules (all configurable through `STRIKE_COPY_*` in `.env`):
 | Live slippage | ≤ 2¢ over trader price | thin books on cheap tokens; skip instead of chase |
 
 Winning tokens resolve to $1 but must be redeemed (Polymarket UI or a redeem transaction); the bot does not redeem.
+The backtester models buy-and-hold only; mirrored sells are not simulated.
 
 ### Latency design (no polling in the copy path)
 
